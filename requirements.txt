@@ -1,0 +1,10 @@
+streamlit>=1.34
+plotly>=5.20
+pandas>=2.2
+streamlit-plotly-events>=0.0.6
+openpyxl>=3.1
+tzdata>=2024.1
+watchdog>=4.0          # optional, for fast reload on macOS
+
+streamlit-plotly-events>=0.0.6
+         # Excel I/O
