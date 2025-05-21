@@ -332,21 +332,25 @@ if event and "relayout" in event:
         range_end = pd.to_datetime(r["xaxis.range"][1])
         new_center = range_start + (range_end - range_start) / 2
 
-
-# process a click selection
 a = st.session_state.annotations[tf_now]
+# process a click selection
 if event and event.selection and event.selection.points:
     p0 = event.selection.points[0]
     iso_clicked = str(pd.to_datetime(p0["x"]))
     price_clicked = float(p0["y"])
     print(price_clicked)
+    # Update center_time based on visible window
+    st.session_state.center_time = iso_clicked
+
+    # Toggle annotation
     if iso_clicked in a:
-        a.pop(iso_clicked)  # toggle – remove existing
+        a.pop(iso_clicked)
     else:
         a[iso_clicked] = {"label": label_pick, "y": price_clicked}
 
     Path(st.session_state.autosave_dir).mkdir(parents=True, exist_ok=True)
     save_xlsx(Path(st.session_state.autosave_dir) / "autosave.xlsx")
+
     st.rerun()
 
 st.caption("Candlestick Annotator – sessions shown as thin bars at top • click candles to label")
