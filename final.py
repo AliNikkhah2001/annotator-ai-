@@ -317,6 +317,8 @@ event = st.plotly_chart(
     config=plot_cfg,
     on_event="relayout"
 )
+
+
 if event and "relayout" in event:
     r = event["relayout"]
 

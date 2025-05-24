@@ -1,0 +1,20 @@
+# ── Python virtual-environment folders ────────────────────────────────
+# Common names created by `python -m venv`, virtualenv, Pipenv, Poetry, etc.
+venv/
+.venv/
+env/
+.env/
+**/.conda/
+**/.mamba/
+**/.tox/
+# Catch venv-style dirs that live deeper in the tree (e.g. src/project/venv/)
+**/venv/
+**/.venv/
+**/env/
+**/.env/
+
+# Ignore common virtual-environment dirs anywhere in the tree
+**/venv/
+**/.venv/
+**/env/
+**/.env/
