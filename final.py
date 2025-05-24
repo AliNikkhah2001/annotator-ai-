@@ -98,22 +98,60 @@ def load_xlsx(xf) -> None:
 
 
 def save_xlsx(path: Path) -> None:
-    """Write all annotations to *path* (XLSX)."""
+    """Write all annotations and full candle info to *path* (XLSX)."""
     rows: list[dict[str, object]] = []
+    df_current = st.session_state.dataframes[st.session_state.timeframe]
+
     for tf, amap in st.session_state.annotations.items():
         for i, (iso, m) in enumerate(sorted(amap.items()), 1):
             d = pd.to_datetime(iso)
-            rows.append(
-                {
-                    "NUMBER": i,
-                    "D/T": st.session_state.dt_constant,
-                    "T/F": tf,
-                    "T/T": LABEL_OPTIONS[m["label"]][0],
-                    "DATE": d.date(),
-                    "TIME": d.time(),
-                    "PRICE": m["y"],
-                }
-            )
+            candle_row = df_current.loc[df_current["Date"] == d]
+
+            if candle_row.empty:
+                # Handle dots without candle info
+                rows.append(
+                    {
+                        "NUMBER": i,
+                        "D/T": st.session_state.dt_constant,
+                        "T/F": tf,
+                        "T/T": LABEL_OPTIONS[m["label"]][0],
+                        "DATE": d.date(),
+                        "TIME": d.time(),
+                        "PRICE": m["y"],
+                        "OPEN": None,
+                        "HIGH": None,
+                        "LOW": None,
+                        "CLOSE": None,
+                        "UPPER_SHADOW": None,
+                        "LOWER_SHADOW": None,
+                        "BODY": None,
+                    }
+                )
+            else:
+                candle = candle_row.iloc[0]
+                upper_shadow = candle["High"] - max(candle["Open"], candle["Close"])
+                lower_shadow = min(candle["Open"], candle["Close"]) - candle["Low"]
+                body_size = abs(candle["Open"] - candle["Close"])
+
+                rows.append(
+                    {
+                        "NUMBER": i,
+                        "D/T": st.session_state.dt_constant,
+                        "T/F": tf,
+                        "T/T": LABEL_OPTIONS[m["label"]][0],
+                        "DATE": d.date(),
+                        "TIME": d.time(),
+                        "PRICE": m["y"],
+                        "OPEN": candle["Open"],
+                        "HIGH": candle["High"],
+                        "LOW": candle["Low"],
+                        "CLOSE": candle["Close"],
+                        "UPPER_SHADOW": upper_shadow,
+                        "LOWER_SHADOW": lower_shadow,
+                        "BODY": body_size,
+                    }
+                )
+
     pd.DataFrame(rows).to_excel(path, index=False)
 
 
@@ -151,7 +189,8 @@ with st.sidebar:
     st.markdown("---")
     st.session_state.how_sessions = st.checkbox("Show session bars", value=True)
     st.session_state.show_daylines = st.checkbox("Show day separators", value=True)
-    st.markdown("---")
+
+
     left, right = st.columns(2)
     tf_now = st.session_state.timeframe
     step = st.session_state.step_sizes[tf_now] 
@@ -175,6 +214,10 @@ with st.sidebar:
         st.info("📄 Load a CSV to begin.")
         st.stop()
 
+    st.markdown("---")
+    label_pick = st.radio("Label", list(LABEL_OPTIONS.keys()), horizontal=True)
+    st.markdown("---")
+
     # Active timeframe (dataset)
     default_idx = keys.index(st.session_state.timeframe) if st.session_state.timeframe in keys else 0
     tf_now = st.radio("Active timeframe", keys, index=default_idx)
@@ -196,9 +239,6 @@ with st.sidebar:
 
 
 
-    st.markdown("---")
-    label_pick = st.radio("Label", list(LABEL_OPTIONS.keys()), horizontal=True)
-    st.markdown("---")
 
     st.text_input("Autosave folder", key="autosave_dir")
     fname = st.text_input("Manual save filename", value="annotations")
@@ -206,6 +246,15 @@ with st.sidebar:
         Path(st.session_state.autosave_dir).mkdir(parents=True, exist_ok=True)
         save_xlsx(Path(st.session_state.autosave_dir) / f"{fname}.xlsx")
         st.success("Saved")
+
+
+
+
+
+
+
+
+
 
 # -------------------- main plot --------------------------------------
 center_dt = pd.to_datetime(st.session_state.center_time)
@@ -273,6 +322,13 @@ for iso, m in st.session_state.annotations.get(tf_now, {}).items():
 visible_ymin = dff["Low"].min()
 visible_ymax = dff["High"].max()
 fig.update_yaxes(range=[visible_ymin, visible_ymax])
+fig.update_yaxes(
+    range=[visible_ymin, visible_ymax],
+    nticks=30,  # sets approximately 30 y-axis gridlines
+    showgrid=True,
+    gridwidth=0.5,
+    gridcolor="gray")
+
 print(visible_ymin,visible_ymax )
 
 
@@ -298,12 +354,7 @@ for i, cfg in enumerate(SESSION_INFO.values()):
         if st.session_state.show_sessions:
             fig.add_shape(type="rect", x0=sx, x1=ex, xref="x", y0=y0_p, y1=y1_p, yref="paper", fillcolor=cfg["color"], line=dict(width=1), layer="above")
 
-# existing annotations (dots only, small size)
-for iso, m in st.session_state.annotations.get(tf_now, {}).items():
-    dt = pd.to_datetime(iso)
-    fig.add_trace(
-        go.Scatter(x=[dt], y=[m["y"]], mode="markers", marker=dict(size=5, color=LABEL_OPTIONS[m["label"]][1]), showlegend=False)
-    )
+
 
 plot_cfg = {"scrollZoom": True, "displaylogo": False}
 
@@ -334,25 +385,57 @@ if event and "relayout" in event:
         range_end = pd.to_datetime(r["xaxis.range"][1])
         new_center = range_start + (range_end - range_start) / 2
 
+
+
+
+
+
+
+
 a = st.session_state.annotations[tf_now]
-# process a click selection
+# At the very top (right after event handling), handle the click event and set the state:
 if event and event.selection and event.selection.points:
     p0 = event.selection.points[0]
     iso_clicked = str(pd.to_datetime(p0["x"]))
-    price_clicked = float(p0["y"])
-    print(price_clicked)
-    # Update center_time based on visible window
-    st.session_state.center_time = iso_clicked
+    default_y = float(p0["y"])
 
-    # Toggle annotation
-    if iso_clicked in a:
-        a.pop(iso_clicked)
-    else:
-        a[iso_clicked] = {"label": label_pick, "y": price_clicked}
+    # Immediately set session state and continue execution without immediate rerun
+    st.session_state["pending_annotation"] = {
+        "iso_clicked": iso_clicked,
+        "default_y": default_y
+    }
 
-    Path(st.session_state.autosave_dir).mkdir(parents=True, exist_ok=True)
-    save_xlsx(Path(st.session_state.autosave_dir) / "autosave.xlsx")
+# After setting session state, immediately below, render the expander if pending_annotation is set:
+if "pending_annotation" in st.session_state:
+    pending = st.session_state["pending_annotation"]
 
-    st.rerun()
+    with st.expander("🖊️ Specify Exact Y-Position", expanded=True):
+        st.write(f"Selected candle: {pending['iso_clicked']}")
 
+        exact_y = st.number_input(
+            "Enter exact price:",
+            value=pending["default_y"],
+            format="%.5f",
+            key="exact_y_modal"
+        )
+
+        col1, col2 = st.columns(2)
+
+        confirmed = col1.button("✅ Confirm", use_container_width=True)
+        canceled = col2.button("❌ Cancel", use_container_width=True)
+
+        if confirmed:
+            iso_clicked = pending["iso_clicked"]
+            a = st.session_state.annotations[tf_now]
+
+            a[iso_clicked] = {"label": label_pick, "y": exact_y}
+            Path(st.session_state.autosave_dir).mkdir(parents=True, exist_ok=True)
+            save_xlsx(Path(st.session_state.autosave_dir) / "autosave.xlsx")
+
+            del st.session_state["pending_annotation"]
+            st.rerun()
+
+        if canceled:
+            del st.session_state["pending_annotation"]
+            st.rerun()
 st.caption("Candlestick Annotator – sessions shown as thin bars at top • click candles to label")
